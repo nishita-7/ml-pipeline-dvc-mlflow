@@ -1,0 +1,65 @@
+schema: '2.0'
+stages:
+  preprocess:
+    cmd: python src/preprocess.py
+    deps:
+    - path: data/raw/data.csv
+      hash: md5
+      md5: 739f3c9177b13d1c15aa060046cfb023
+      size: 23872
+    - path: src/preprocess.py
+      hash: md5
+      md5: 55c142fe566bf5ead910d0100db2bc08
+      size: 505
+    params:
+      params.yaml:
+        preprocess.input: data/raw/data.csv
+        preprocess.output: data/processed/data.csv
+    outs:
+    - path: data/processed/data.csv
+      hash: md5
+      md5: 58e31c573524fd7d9454ad6f1dcf9af5
+      size: 24058
+  train:
+    cmd: python src/train.py
+    deps:
+    - path: data/processed/data.csv
+      hash: md5
+      md5: 58e31c573524fd7d9454ad6f1dcf9af5
+      size: 24058
+    - path: src/train.py
+      hash: md5
+      md5: 1e99df3e40fc25b24376ce586803e087
+      size: 3404
+    params:
+      params.yaml:
+        train.data: data/processed/data.csv
+        train.max_depth: 5
+        train.model: models/model.pkl
+        train.n_estimators: 100
+        train.random_state: 42
+    outs:
+    - path: models/model.pkl
+      hash: md5
+      md5: 887eb3633d5c1cf4d43e463d5ec7b83a
+      size: 1131986
+  evaluate:
+    cmd: python src/evaluate.py
+    deps:
+    - path: data/processed/data.csv
+      hash: md5
+      md5: 58e31c573524fd7d9454ad6f1dcf9af5
+      size: 24058
+    - path: models/model.pkl
+      hash: md5
+      md5: 887eb3633d5c1cf4d43e463d5ec7b83a
+      size: 1131986
+    - path: src/evaluate.py
+      hash: md5
+      md5: f57dd4c24efa2d8ff33e577395504f48
+      size: 2069
+    params:
+      params.yaml:
+        evaluate.data: data/processed/data.csv
+        evaluate.model: models/model.pkl
+        train.random_state: 42

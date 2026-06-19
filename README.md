@@ -1,6 +1,6 @@
 # 🩺 Diabetes Prediction — ML Pipeline with DVC & MLflow
 
-A production-style, end-to-end machine learning pipeline for predicting diabetes onset using the **Pima Indians Diabetes Dataset**. Built with MLOps best practices: versioned data and models via **DVC**, experiment tracking via **MLflow**, and remote storage on **DagsHub**.
+An end-to-end machine learning pipeline for predicting diabetes onset using the **Pima Indians Diabetes Dataset**. Built with MLOps best practices: versioned data and models via **DVC**, experiment tracking via **MLflow**, and remote storage on **DagsHub**.
 
 ---
 
@@ -24,6 +24,7 @@ machinelearningpipeline/
 ├── dvc.lock                      # Locked dependency hashes (auto-generated)
 ├── params.yaml                   # Centralized hyperparameters & config
 ├── requirements.txt              # Python dependencies
+├── .env                          # MLflow credentials (never commit this)
 └── README.md
 ```
 
@@ -49,7 +50,7 @@ The **Pima Indians Diabetes Dataset** contains diagnostic measurements for 768 f
 
 ## ⚙️ Pipeline Overview
 
-The pipeline consists of three sequential stages, orchestrated by DVC. Re-running `dvc repro` will only execute stages whose inputs have changed.
+The pipeline has three sequential stages orchestrated by DVC. Only stages whose inputs have changed are re-run.
 
 ```
 data/raw/data.csv
@@ -65,14 +66,15 @@ data/raw/data.csv
 ```
 
 ### Stage 1 — Preprocess (`src/preprocess.py`)
-Reads the raw CSV and writes a cleaned version to the `data/processed/` directory. Input and output paths are controlled via `params.yaml`.
+- Reads raw CSV from `data/raw/`
+- Replaces biologically impossible zero values in columns like `Glucose`, `BMI`, `Insulin` with column medians
+- Saves cleaned data to `data/processed/data.csv`
 
 ### Stage 2 — Train (`src/train.py`)
-- Splits data 80/20 (train/test)
-- Runs **GridSearchCV** over a `RandomForestClassifier` to find the best hyperparameter combination
-- Logs the best model, hyperparameters, accuracy, confusion matrix, and classification report to **MLflow**
-- Registers the final model as `"Best Model"` in the MLflow Model Registry
-- Saves the trained model to `models/model.pkl`
+- Splits data 80/20 (fixed `random_state` for reproducibility)
+- Runs **GridSearchCV** over a `RandomForestClassifier`
+- Logs hyperparameters, accuracy, confusion matrix, and classification report to **MLflow**
+- Saves the best model to `models/model.pkl`
 
 **Hyperparameter search space:**
 
@@ -84,26 +86,15 @@ Reads the raw CSV and writes a cleaned version to the `data/processed/` director
 | `min_samples_leaf` | 1, 2 |
 
 ### Stage 3 — Evaluate (`src/evaluate.py`)
-Loads the saved model and runs inference on the full dataset. Logs the final accuracy metric back to MLflow.
+- Loads the saved model
+- Evaluates on the same held-out test split used during training
+- Logs accuracy, F1 score, ROC-AUC, precision, and recall to MLflow
 
 ---
 
 ## 🔧 Configuration
 
 All tunable parameters live in `params.yaml`. Edit this file to change paths or model settings — no code changes needed.
-
-```yaml
-preprocess:
-  input:  data/raw/data.csv
-  output: data/processed/data.csv
-
-train:
-  data:          data/raw/data.csv
-  model:         models/model.pkl
-  random_state:  42
-  n_estimators:  100
-  max_depth:     5
-```
 
 ---
 
@@ -113,63 +104,169 @@ train:
 
 - Python 3.8+
 - Git
+- A [DagsHub](https://dagshub.com) account
 
-### Installation
+---
+
+### Step 1 — Create a DagsHub repository
+
+1. Go to [dagshub.com](https://dagshub.com) and log in
+2. Click **New Repository**
+3. Name it and create it
+4. On the repo page, click **Remote** → copy both the Git and DVC remote URLs
+
+---
+
+### Step 2 — Clone & set up locally
 
 ```bash
-# Clone the repository
-git clone <your-repo-url>
-cd machinelearningpipeline
+git clone https://dagshub.com/<your-username>/<your-repo-name>.git
+cd <your-repo-name>
+```
 
-# Install dependencies
+Create a virtual environment and install dependencies:
+
+```bash
+python -m venv venv
+
+# Windows
+venv\Scripts\activate
+
+# Mac/Linux
+source venv/bin/activate
+
 pip install -r requirements.txt
-```
-
-### Running the Pipeline
-
-```bash
-# Run all pipeline stages (only re-runs changed stages)
-dvc repro
-
-# Force re-run everything
-dvc repro --force
-```
-
-### Viewing Experiments
-
-Experiments are tracked on DagsHub. Open the MLflow UI to compare runs, parameters, and metrics:
-
-```bash
-# Or visit directly:
-# https://dagshub.com/krishnaik06/machinelearningpipeline.mlflow
-mlflow ui
 ```
 
 ---
 
-## 📦 Adding / Modifying Pipeline Stages
+### Step 3 — Set up your `.env` file
 
-Use `dvc stage add` to register new stages. Examples:
+Create a `.env` file in the project root with your DagsHub MLflow credentials:
+
+```
+MLFLOW_TRACKING_URI=https://dagshub.com/<your-username>/<your-repo-name>.mlflow
+MLFLOW_TRACKING_USERNAME=<your-username>
+MLFLOW_TRACKING_PASSWORD=<your-dagshub-token>
+```
+
+> Your DagsHub token is found under **Settings → Access Tokens** on DagsHub.
+
+---
+
+### Step 4 — Initialize DVC & track raw data
 
 ```bash
-# Preprocess stage
+dvc init
+dvc add data/raw/data.csv
+git add data/raw/data.csv.dvc data/raw/.gitignore
+```
+
+---
+
+### Step 5 — Set DVC remote storage to DagsHub
+
+```bash
+dvc remote add origin https://dagshub.com/<your-username>/<your-repo-name>.dvc
+dvc remote modify origin --local auth basic
+dvc remote modify origin --local user <your-username>
+dvc remote modify origin --local password <your-dagshub-token>
+```
+
+---
+
+### Step 6 — Register pipeline stages
+
+```bash
+# Stage 1
 dvc stage add -n preprocess \
     -p preprocess.input,preprocess.output \
     -d src/preprocess.py -d data/raw/data.csv \
     -o data/processed/data.csv \
     python src/preprocess.py
 
-# Train stage
+# Stage 2
 dvc stage add -n train \
     -p train.data,train.model,train.random_state,train.n_estimators,train.max_depth \
-    -d src/train.py -d data/raw/data.csv \
+    -d src/train.py -d data/processed/data.csv \
     -o models/model.pkl \
     python src/train.py
 
-# Evaluate stage
+# Stage 3
 dvc stage add -n evaluate \
-    -d src/evaluate.py -d models/model.pkl -d data/raw/data.csv \
+    -p train.random_state,evaluate.data,evaluate.model \
+    -d src/evaluate.py -d data/processed/data.csv -d models/model.pkl \
     python src/evaluate.py
+```
+
+> **Windows (PowerShell):** Replace `\` with a backtick `` ` ``
+
+---
+
+### Step 7 — First commit
+
+```bash
+git add .
+git commit -m "initial project setup"
+```
+
+---
+
+### Step 8 — Run the pipeline
+
+```bash
+dvc repro
+```
+
+You should see all three stages execute in order:
+
+```
+Running stage 'preprocess'...
+Running stage 'train'...
+Running stage 'evaluate'...
+```
+
+---
+
+### Step 9 — Push everything
+
+```bash
+# Push data & model to DagsHub DVC storage
+dvc push
+
+# Commit the generated lock file
+git add dvc.lock
+git commit -m "first pipeline run"
+
+# Push code to DagsHub
+git push -u origin main
+```
+
+---
+
+### Step 10 — View results on DagsHub
+
+| Tab | What you'll see |
+|---|---|
+| **Repository** | All your code and config files |
+| **Files** | `data/raw/data.csv` and `models/model.pkl` (DVC-managed) |
+| **Experiments** | MLflow runs with metrics, params, and artifacts |
+
+---
+
+## 🔁 Re-running After Changes
+
+DVC is smart — it only re-runs stages whose inputs changed:
+
+```bash
+# Edit params.yaml (e.g. change n_estimators) then:
+dvc repro
+
+# Force re-run everything regardless
+dvc repro --force
+
+# Check what DVC thinks has changed
+dvc status
 ```
 
 ---
@@ -179,44 +276,11 @@ dvc stage add -n evaluate \
 | Tool | Purpose |
 |---|---|
 | [DVC](https://dvc.org/) | Data & model versioning, pipeline orchestration |
-| [MLflow](https://mlflow.org/) | Experiment tracking, model registry |
-| [DagsHub](https://dagshub.com/) | Remote storage + hosted MLflow tracking server |
+| [MLflow](https://mlflow.org/) | Experiment tracking, metrics logging |
+| [DagsHub](https://dagshub.com/) | Remote Git + DVC storage + MLflow server |
 | [scikit-learn](https://scikit-learn.org/) | RandomForestClassifier, GridSearchCV, metrics |
 | [pandas](https://pandas.pydata.org/) | Data loading and preprocessing |
-
----
-
-## 📋 Requirements
-
-```
-dvc
-dagshub
-scikit-learn
-mlflow
-dvc-s3
-```
-
-Install with:
-
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature`
-3. Make your changes and run `dvc repro` to validate the pipeline
-4. Commit both code and DVC lock files: `git add dvc.lock && git commit`
-5. Open a pull request
-
----
-
-## ⚠️ Security Note
-
-MLflow tracking credentials are currently set as environment variables directly in the source code. Before sharing or open-sourcing this project, move these to a `.env` file or a secrets manager and add `.env` to `.gitignore`.
+| [python-dotenv](https://pypi.org/project/python-dotenv/) | Loading credentials from `.env` |
 
 ---
 
