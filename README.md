@@ -1,5 +1,10 @@
 # 🩺 Diabetes Prediction — ML Pipeline with DVC & MLflow
 
+[![DagsHub](https://img.shields.io/badge/DagsHub-Open%20Repo-orange)](https://dagshub.com/nishita-7/machine_learning_pipeline)
+[![MLflow](https://img.shields.io/badge/MLflow-Experiments-blue)](https://dagshub.com/nishita-7/machine_learning_pipeline.mlflow)
+[![Python](https://img.shields.io/badge/Python-3.8+-green)](https://www.python.org/)
+[![DVC](https://img.shields.io/badge/DVC-Data%20Version%20Control-purple)](https://dvc.org/)
+
 An end-to-end machine learning pipeline for predicting diabetes onset using the **Pima Indians Diabetes Dataset**. Built with MLOps best practices: versioned data and models via **DVC**, experiment tracking via **MLflow**, and remote storage on **DagsHub**.
 
 ---
@@ -286,4 +291,4 @@ dvc status
 
 ## 📄 License
 
-This project is open-source. See `LICENSE` for details.
+This project is licensed under the [MIT License](LICENSE).
